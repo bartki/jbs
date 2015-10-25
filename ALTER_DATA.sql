@@ -1,8 +1,13 @@
+DECLARE
+    v_order_clob   CLOB;
 BEGIN
     INSERT INTO jg_sql_repository (id,
                                    object_type,
                                    sql_query,
-                                   xslt)
+                                   xslt,
+                                   file_location,
+                                   up_to_date,
+                                   direction)
              VALUES (
                         jg_sqre_seq.NEXTVAL,
                         'INVOICES_PAYMENTS',
@@ -49,12 +54,18 @@ GROUP BY rndo.symbol_dokumentu,
     <xsl:template priority="2" match="PAYMENTS_DETAILS/PAYMENTS_DETAILS_ROW">
         <PAYMENT_DETAIL><xsl:apply-templates/></PAYMENT_DETAIL>            
     </xsl:template>
-</xsl:stylesheet>');
+</xsl:stylesheet>',
+                        'IN/invoices_payments',
+                        'N',
+                        'IN');
 
     INSERT INTO jg_sql_repository (id,
                                    object_type,
                                    sql_query,
-                                   xslt)
+                                   xslt,
+                                   file_location,
+                                   up_to_date,
+                                   direction)
              VALUES (
                         jg_sqre_seq.NEXTVAL,
                         'COMMODITIES',
@@ -136,17 +147,23 @@ GROUP BY rndo.symbol_dokumentu,
     <xsl:template priority="2" match="GROUPS/GROUPS_ROW">
         <GROUP><xsl:apply-templates/></GROUP>            
     </xsl:template>                               
-</xsl:stylesheet>');
+</xsl:stylesheet>',
+                        'IN/commodities',
+                        'T',
+                        'OUT');
 
     INSERT INTO jg_sql_repository (id,
                                    object_type,
                                    sql_query,
-                                   xslt)
+                                   xslt,
+                                   file_location,
+                                   up_to_date,
+                                   direction)
              VALUES (
                         jg_sqre_seq.NEXTVAL,
                         'CONTRACTORS',
                         'SELECT konr.symbol customer_number,
-       konr_payer.symbol payer_number,       
+       konr_payer.symbol payer_number,
        konr.nazwa name,
        konr.skrot short_name,
        konr.nip nip,
@@ -158,8 +175,20 @@ GROUP BY rndo.symbol_dokumentu,
        konr.nr_faksu fax,
        konr.mail email,
        konr.dni_do_zaplaty day_topay,
-       LG_KNR_LIKR_SQL.Aktualny_Limit_Konr_Kwota (KONR.ID, Pa_Sesja.Dzisiaj) credit_limit,
-       ''T'' representative,
+       lg_knr_likr_sql.aktualny_limit_konr_kwota (konr.id, pa_sesja.dzisiaj)
+           credit_limit,
+       (SELECT MAX (osol.kod)
+          FROM lg_osoby_log osol,
+               (    SELECT *
+                      FROM lg_grupy_kontrahentow
+                START WITH id = 63
+                CONNECT BY PRIOR id = grkn_id) grko,
+               lg_kontrahenci_grup kngr
+         WHERE     osol.atrybut_t01 = grko.nazwa
+               AND grko.id = kngr.grkn_id
+               AND osol.aktualna = ''T''
+               AND kngr.konr_id = konr.id)
+           representative,
        konr.nr_umowy_ind default_financing_method,
        CURSOR (
            SELECT ulica street,
@@ -184,7 +213,7 @@ GROUP BY rndo.symbol_dokumentu,
                   AND rola_adresu = ''DOSTAWY'')
            delivery_addresses
   FROM ap_kontrahenci konr, ap_kontrahenci konr_payer
- WHERE konr_payer.id(+) = konr.platnik_id AND konr.id IN (:p_id)',
+ WHERE konr_payer.id(+) = konr.platnik_id AND konr.id IN ( :p_id)',
                         '<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
         <xsl:output method="xml" version="1.5" indent="yes" omit-xml-declaration="no" />
     <xsl:template match="@*|node()">
@@ -201,12 +230,18 @@ GROUP BY rndo.symbol_dokumentu,
     <xsl:template priority="2" match="DELIVERY_ADDRESSES/DELIVERY_ADDRESSES_ROW">
         <DELIVERY_ADDRESS><xsl:apply-templates/></DELIVERY_ADDRESS>            
     </xsl:template>                         
-</xsl:stylesheet>');
+</xsl:stylesheet>',
+                        'IN/contractors',
+                        'T',
+                        'OUT');
 
     INSERT INTO jg_sql_repository (id,
                                    object_type,
                                    sql_query,
-                                   xslt)
+                                   xslt,
+                                   file_location,
+                                   up_to_date,
+                                   direction)
              VALUES (
                         jg_sqre_seq.NEXTVAL,
                         'INVOICES',
@@ -268,13 +303,13 @@ GROUP BY rndo.symbol_dokumentu,
     <xsl:template priority="2" match="LINES/LINES_ROW">
         <LINE><xsl:apply-templates/></LINE>            
     </xsl:template>                
-</xsl:stylesheet>');
-END;
-/
-DECLARE
-    v_sql         CLOB;
-BEGIN
-    v_sql := 'SELECT header.*,
+</xsl:stylesheet>',
+                        'IN/invoices',
+                        'N',
+                        'OUT');
+
+    v_order_clob :=
+        'SELECT header.*,
                          wzrc.pricing_type pricing_type,
                          pa_firm_sql.kod (wzrc.firm_id) company_code,
                          wzrc.name wzorzec,
@@ -335,26 +370,26 @@ BEGIN
                                             FROM jg_input_log log1,
                                                  ap_indeksy_materialowe inma,
                                                  XMLTABLE (
-                                                     '//Order/Items/Item'
+                                                     ''//Order/Items/Item''
                                                      PASSING xmltype (log1.xml)
                                                      COLUMNS ordinal_number     VARCHAR2 (30)
-                                                                                    PATH '/Item/OrdinalNumber',
+                                                                                    PATH ''/Item/OrdinalNumber'',
                                                              note               VARCHAR2 (30)
-                                                                                    PATH '/Item/Comment',
+                                                                                    PATH ''/Item/Comment'',
                                                              commodity_id       VARCHAR2 (30)
-                                                                                    PATH '/Item/CommodityID',
+                                                                                    PATH ''/Item/CommodityID'',
                                                              quantity_ordered   VARCHAR2 (30)
-                                                                                    PATH '/Item/QuantityOrdered',
+                                                                                    PATH ''/Item/QuantityOrdered'',
                                                              discount           VARCHAR2 (30)
-                                                                                    PATH '/Item/Discount',
+                                                                                    PATH ''/Item/Discount'',
                                                              promotion_code     VARCHAR2 (30)
-                                                                                    PATH '/Item/PromotionCode',
+                                                                                    PATH ''/Item/PromotionCode'',
                                                              promotion_name     VARCHAR2 (30)
-                                                                                    PATH '/Item/PromotionName',
+                                                                                    PATH ''/Item/PromotionName'',
                                                              net_price          VARCHAR2 (30)
-                                                                                    PATH '/Item/NetPrice',
+                                                                                    PATH ''/Item/NetPrice'',
                                                              commodity_ean      VARCHAR2 (30)
-                                                                                    PATH '/Item/CommodityEAN') item_xml
+                                                                                    PATH ''/Item/CommodityEAN'') item_xml
                                            WHERE     log1.id = LOG.id
                                                  AND inma.indeks = item_xml.commodity_id)
                              items
@@ -362,33 +397,51 @@ BEGIN
                          lg_documents_templates wzrc,
                          lg_punkty_sprzedazy pusp,
                          XMLTABLE (
-                             '//Order'
+                             ''//Order''
                              PASSING xmltype (LOG.xml)
-                             COLUMNS id VARCHAR2 (30) PATH '/Order/ID',
-                                     customer_symbol VARCHAR2 (30) PATH '/Order/CustomerID',
-                                     supplier_symbol VARCHAR2 (30) PATH '/Order/SupplierID',
-                                     realization_date DATE PATH '/Order/RealizationDate',
+                             COLUMNS id VARCHAR2 (30) PATH ''/Order/ID'',
+                                     customer_symbol VARCHAR2 (30) PATH ''/Order/CustomerID'',
+                                     supplier_symbol VARCHAR2 (30) PATH ''/Order/SupplierID'',
+                                     realization_date DATE PATH ''/Order/RealizationDate'',
                                      sales_representative_id VARCHAR2 (30)
-                                         PATH '/Order/SalesRepresentativeID',
+                                         PATH ''/Order/SalesRepresentativeID'',
                                      payment_method_id VARCHAR2 (30)
-                                         PATH '/Order/PaymentMethodID',
+                                         PATH ''/Order/PaymentMethodID'',
                                      delivery_method_id VARCHAR2 (30)
-                                         PATH '/Order/DeliveryMethodID',
-                                     discount VARCHAR2 (30) PATH '/Order/Discount',
-                                     note VARCHAR2 (30) PATH '/Order/Comment',
-                                     net_value VARCHAR2 (30) PATH '/Order/NetValue') header
+                                         PATH ''/Order/DeliveryMethodID'',
+                                     discount VARCHAR2 (30) PATH ''/Order/Discount'',
+                                     note VARCHAR2 (30) PATH ''/Order/Comment'',
+                                     net_value VARCHAR2 (30) PATH ''/Order/NetValue'') header
                    WHERE     pusp.id = wzrc.pusp_id
                          AND wzrc.id = :p_wzrc_id
                          AND LOG.id = :p_operation_id';
-                           
-    INSERT INTO jg_sql_repository (id, object_type, sql_query, xslt)
-             VALUES (jg_sqre_seq.NEXTVAL, 'ORDER', v_sql, null);
-END;
-/
-BEGIN
-    INSERT INTO jg_sql_repository (id, object_type, sql_query, xslt)
-             VALUES (jg_sqre_seq.NEXTVAL, 'RESERVATIONS',
-                     'SELECT zare.dest_symbol            order_id,
+
+    INSERT INTO jg_sql_repository (id,
+                                   object_type,
+                                   sql_query,
+                                   xslt,
+                                   file_location,
+                                   up_to_date,
+                                   direction)
+         VALUES (jg_sqre_seq.NEXTVAL,
+                 'ORDER',
+                 v_order_clob,
+                 NULL,
+                 'OUT/orders',
+                 'T',
+                 'IN');
+
+    INSERT INTO jg_sql_repository (id,
+                                   object_type,
+                                   sql_query,
+                                   xslt,
+                                   file_location,
+                                   up_to_date,
+                                   direction)
+             VALUES (
+                        jg_sqre_seq.NEXTVAL,
+                        'RESERVATIONS',
+                        'SELECT zare.dest_symbol            order_id,
                              zare.data_realizacji        realization_date,
                              inma.indeks                 commoditiy_id,
                              zare.ilosc                  quantity_ordered,
@@ -398,13 +451,23 @@ BEGIN
                              ap_indeksy_materialowe inma
                        WHERE     reze.zare_id = zare.id
                              AND zare.inma_id = inma.id
-                             AND reze.id IN (:p_id)', null);
-END;
-/
-BEGIN
-    INSERT INTO jg_sql_repository (id, object_type, sql_query, xslt)
-             VALUES (jg_sqre_seq.NEXTVAL, 'SETS_COMPONENTS',
-                     'SELECT inma_kpl.indeks set_id,
+                             AND reze.id IN (:p_id)',
+                        NULL,
+                        NULL,
+                        'N',
+                        'OUT');
+
+    INSERT INTO jg_sql_repository (id,
+                                   object_type,
+                                   sql_query,
+                                   xslt,
+                                   file_location,
+                                   up_to_date,
+                                   direction)
+             VALUES (
+                        jg_sqre_seq.NEXTVAL,
+                        'SETS_COMPONENTS',
+                        'SELECT inma_kpl.indeks set_id,
                              inma_kpl.nazwa set_name,
                              Lg_Stm_Sgpu_Sql.Stan_Goracy(inma_kpl.id, inma_kpl.jdmr_nazwa, null) available_stock,
                              inma_kpl.atrybut_n05 price_before_discount,
@@ -424,6 +487,154 @@ BEGIN
                              ap_indeksy_materialowe inma_kpl
                        WHERE     kpsk.kpl_inma_id = inma_kpl.id
                              AND ROWNUM = 1
-                             AND kpsk.kpl_inma_id IN (:p_id)', null);
+                             AND kpsk.kpl_inma_id IN (:p_id)',
+                        '<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+        <xsl:output method="xml" version="1.5" indent="yes" omit-xml-declaration="no" />
+    <xsl:template match="@*|node()">
+        <xsl:copy>
+            <xsl:apply-templates select="@*|node()" />
+        </xsl:copy>
+    </xsl:template>
+    <xsl:template priority="2" match="ROW">
+        <SET_COMPONENTS><xsl:apply-templates/></SET_COMPONENTS>            
+    </xsl:template>
+    <xsl:template priority="2" match="COMPONENTS/COMPONENTS_ROW">
+        <COMPONENT><xsl:apply-templates/></COMPONENT>            
+    </xsl:template>                
+</xsl:stylesheet>',
+                        'IN/components',
+                        'T',
+                        'OUT');
+
+    INSERT INTO jg_sql_repository (id,
+                                   object_type,
+                                   sql_query,
+                                   xslt,
+                                   file_location,
+                                   up_to_date,
+                                   direction)
+         VALUES (jg_sqre_seq.NEXTVAL,
+                 'SALES_REPRESENTATIVES',
+                 EMPTY_CLOB (),
+                 EMPTY_CLOB (),
+                 'IN/sales_representatives',
+                 'T',
+                 'OUT');
+
+    INSERT INTO jg_sql_repository (id,
+                                   object_type,
+                                   sql_query,
+                                   xslt,
+                                   file_location,
+                                   up_to_date,
+                                   direction)
+             VALUES (
+                        jg_sqre_seq.NEXTVAL,
+                        'NEW_CONTRACTORS',
+                        'SELECT osol.kod id,
+       osby.code name,
+       osol.aktualna active,
+       osol.first_name username,
+       osol.surname usersurname,
+       CURSOR (
+           SELECT konr.symbol customerid
+             FROM lg_osoby_log osol1,
+                  (    SELECT *
+                         FROM lg_grupy_kontrahentow
+                   START WITH id = 63
+                   CONNECT BY PRIOR id = grkn_id) grko,
+                  lg_kontrahenci_grup kngr,
+                  ap_kontrahenci konr
+            WHERE     osol1.atrybut_t01 = grko.nazwa
+                  AND grko.id = kngr.grkn_id
+                  AND osol1.aktualna = ''T''
+                  AND kngr.konr_id = konr.id
+                  AND osol1.id = osol.id)
+           customers
+  FROM lg_osoby_log osol, pa_osoby osby
+ WHERE     osol.atrybut_t01 IS NOT NULL
+       AND osol.osby_id = osby.id
+       AND osol.id IN ( :p_id)',
+                        '<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+        <xsl:output method="xml" version="1.5" indent="yes" omit-xml-declaration="no" />
+    <xsl:template match="@*|node()">
+        <xsl:copy>
+            <xsl:apply-templates select="@*|node()" />
+        </xsl:copy>
+    </xsl:template>
+    <xsl:template priority="2" match="ROW">
+        <SALES_REPRESENTATIVE><xsl:apply-templates/></SALES_REPRESENTATIVE>            
+    </xsl:template>
+    <xsl:template priority="2" match="CUSTOMERS/CUSTOMERS_ROW">
+        <CUSTOMER><xsl:apply-templates/></CUSTOMER>            
+    </xsl:template>                
+</xsl:stylesheet>',
+                        'OUT/new_customer',
+                        'T',
+                        'IN');
+
+    INSERT INTO jg_sql_repository (id,
+                                   object_type,
+                                   sql_query,
+                                   xslt,
+                                   file_location,
+                                   up_to_date,
+                                   direction)
+         VALUES (jg_sqre_seq.NEXTVAL,
+                 'DELIVERY_METHODS',
+                 'SELECT kod delivery_method_id,
+                         opis description,
+                         transport_wlasny own_transport
+                    FROM ap_sposoby_dostaw spdo
+                   WHERE spdo.id IN (:p_id)',
+                 '<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+                     <xsl:output method="xml" version="1.5" indent="yes" omit-xml-declaration="no" />
+                     <xsl:template match="@*|node()">
+                        <xsl:copy>
+                           <xsl:apply-templates select="@*|node()" />
+                        </xsl:copy>
+                     </xsl:template>
+                     <xsl:template priority="2" match="ROW">
+                        <DELIVERY_METHOD><xsl:apply-templates/></DELIVERY_METHOD>
+                     </xsl:template>
+                     <xsl:template priority="2" match="DELIVERY_METHODS/DELIVERY_METHOD">
+                        <DELIVERY_METHOD><xsl:apply-templates/></DELIVERY_METHOD>
+                     </xsl:template>
+                  </xsl:stylesheet>',
+                 'IN/delivery_methods',
+                 'T',
+                 'OUT');
+
+    INSERT INTO jg_sql_repository (id,
+                                   object_type,
+                                   sql_query,
+                                   xslt,
+                                   file_location,
+                                   up_to_date,
+                                   direction)
+         VALUES (jg_sqre_seq.NEXTVAL,
+                 'PAYMENTS_METHODS',
+                 'SELECT foza.kod payment_method_id,
+                         foza.opis description,
+                         foza.typ type
+                    FROM ap_formy_zaplaty foza
+                   WHERE foza.id in (:p_id)',
+                 '<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+                     <xsl:output method="xml" version="1.5" indent="yes" omit-xml-declaration="no" />
+                     <xsl:template match="@*|node()">
+                        <xsl:copy>
+                           <xsl:apply-templates select="@*|node()" />
+                        </xsl:copy>
+                     </xsl:template>
+                     <xsl:template priority="2" match="ROW">
+                        <PAYMENT_METHOD><xsl:apply-templates/></PAYMENT_METHOD>
+                     </xsl:template>
+                     <xsl:template priority="2" match="PAYMENTS_METHODS/PAYMENT_METHOD">
+                        <PAYMENT_METHOD><xsl:apply-templates/></PAYMENT_METHOD>
+                     </xsl:template>
+                  </xsl:stylesheet>',
+                 'IN/payments_methods',
+                 'T',
+                 'OUT');
 END;
 /
